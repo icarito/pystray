@@ -86,7 +86,7 @@ class Icon(object):
         self._icon = icon or None
         self._freedesktop_icon_name = freedesktop_icon_name or None
         self._title = title or ''
-        self._menu = menu
+        self._menu = menu if isinstance(menu, Menu) else Menu(*menu)
         self._visible = False
         self._icon_valid = False
         self._uses_freedesktop_icon_name = False
