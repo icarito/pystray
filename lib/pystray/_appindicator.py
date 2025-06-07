@@ -1,6 +1,7 @@
 # coding=utf-8
 # pystray
 # Copyright (C) 2016-2022 Moses Palmér
+# Copyright (C) 2022 Stephan Helma
 #
 # This program is free software: you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
@@ -56,10 +57,11 @@ class Icon(GtkIcon):
         self._appindicator.set_menu(
             self._menu_handle or self._create_default_menu())
         self._appindicator.set_title(self.title)
+        self._appindicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
 
     @mainloop
     def _hide(self):
-        self._appindicator = None
+        self._appindicator.set_status(AppIndicator.IndicatorStatus.PASSIVE)
 
     @mainloop
     def _update_icon(self):
@@ -77,8 +79,7 @@ class Icon(GtkIcon):
         self._menu_handle = self._create_menu(self.menu) or \
             self._create_default_menu()
 
-        if self._appindicator:
-            self._appindicator.set_menu(self._menu_handle)
+        self._appindicator.set_menu(self._menu_handle)
 
     def _finalize(self):
         super(Icon, self)._finalize()
