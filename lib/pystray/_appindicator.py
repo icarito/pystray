@@ -47,13 +47,14 @@ class Icon(GtkIcon):
 
     @mainloop
     def _show(self):
+        self._uses_freedesktop_icon_name = True
         self._appindicator = AppIndicator.Indicator.new(
             self.name,
             '',
             AppIndicator.IndicatorCategory.APPLICATION_STATUS)
 
         self._appindicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
-        self._appindicator.set_icon(self._freedesktop_icon_name or self._icon_path)
+        self._appindicator.set_icon(self.name or self._icon_path)
         self._appindicator.set_menu(
             self._menu_handle or self._create_default_menu())
         self._appindicator.set_title(self.title)

@@ -85,7 +85,7 @@ class Icon(object):
 
     def __init__(
             self, name, icon=None, freedesktop_icon_name=None, 
-            title=None, menu=None):
+            title=None, menu=None, **kwargs):
         self._name = name
         self._icon = icon or None
         self._freedesktop_icon_name = freedesktop_icon_name or None
