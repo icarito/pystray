@@ -85,6 +85,12 @@ class Icon(object):
         self._running = False
         self.__queue = queue.Queue()
 
+        prefix = self.__class__.__module__.rsplit('.', 1)[-1][1:] + '_'
+        self._options = {
+            key[len(prefix):]: value
+            for key, value in kwargs.items()
+            if key.startswith(prefix)}
+
     def __del__(self):
         if self.visible:
             self._hide()
