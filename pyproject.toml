@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pystray"
+version = "0.19.5+fork"
+description = "A library to create system tray icons."
+readme = "README.md"
+requires-python = ">=3.6"
+license = {text = "LGPL-3.0-or-later"}
+authors = [
+  {name = "Moses Palmér", email = "moses.palmer@gmail.com"},
+  {name = "Tu Nombre Aquí"} # Opcional: añade tu nombre
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows :: Windows NT/2000",
+    "Operating System :: POSIX",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+
+dependencies = [
+    "Pillow",
+    "six"
+]
