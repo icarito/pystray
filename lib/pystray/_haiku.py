@@ -14,36 +14,57 @@ import tempfile # For _update_icon with PIL.Image
 HELPER_EXECUTABLE_NAME = "PystrayHaikuHelper" # As defined in C++ Makefile
 
 _lib = None
-# Paths to attempt for loading the library
-# 1. Direct name (e.g. if in $PATH or current working directory, or if system linker finds it)
-# 2. Relative to this Python module's directory (common for packaged applications)
-# 3. Standard Haiku application installation paths (conceptual, actual paths may vary)
-_library_candidates = [
-    HELPER_EXECUTABLE_NAME,
-    str(pathlib.Path(__file__).resolve().parent / HELPER_EXECUTABLE_NAME),
-    f"/boot/home/config/apps/{HELPER_EXECUTABLE_NAME}",
-    f"/boot/system/apps/{HELPER_EXECUTABLE_NAME}",
-    # Potentially a location relative to build dir if running uninstalled:
-    # str(pathlib.Path(__file__).resolve().parent.parent.parent / "src" / "haiku_helper" / HELPER_EXECUTABLE_NAME)
-]
+_lib_load_tried = False # Flag to ensure loading is attempted only once.
 
-for path_attempt in _library_candidates:
-    try:
-        _lib = ctypes.CDLL(path_attempt)
-        print(f"Pystray Haiku: Loaded helper library from: {path_attempt}")
-        break
-    except OSError:
-        # print(f"Pystray Haiku: Failed to load from {path_attempt}") # Too verbose for normal ops
-        pass # Try next path
+def _load_library():
+    """
+    Loads the Haiku helper library.
+    This function should only be called once.
+    """
+    global _lib, _lib_load_tried
 
-if _lib is None:
-    print(
-        f"WARNING: Pystray Haiku: Helper library '{HELPER_EXECUTABLE_NAME}' not found "
-        f"in any of the attempted paths. Pystray will not function on Haiku."
-    )
+    if _lib_load_tried:
+        return _lib # Return cached result (None or the library)
+
+    _lib_load_tried = True
+
+    # Paths to attempt for loading the library
+    library_candidates = [
+        HELPER_EXECUTABLE_NAME,
+        str(pathlib.Path(__file__).resolve().parent / HELPER_EXECUTABLE_NAME),
+        f"/boot/home/config/apps/{HELPER_EXECUTABLE_NAME}",
+        f"/boot/system/apps/{HELPER_EXECUTABLE_NAME}",
+        # Example for running from a development tree:
+        # str(pathlib.Path(__file__).resolve().parent.parent.parent / "build" / "haiku_helper" / HELPER_EXECUTABLE_NAME)
+    ]
+
+    loaded_lib = None
+    for path_attempt in library_candidates:
+        try:
+            loaded_lib = ctypes.CDLL(path_attempt)
+            print(f"Pystray Haiku: Loaded helper library from: {path_attempt}")
+            break # Success
+        except OSError:
+            # print(f"Pystray Haiku: Failed to load from {path_attempt}")
+            pass
+
+    _lib = loaded_lib # Assign to global _lib
+
+    if _lib is None:
+        print(
+            f"WARNING: Pystray Haiku: Helper library '{HELPER_EXECUTABLE_NAME}' not found "
+            f"in any of the attempted paths. Pystray will not function on Haiku."
+        )
+    return _lib
+
+# Perform library loading attempt when the module is first imported.
+# Subsequent calls to _load_library() will return the cached result.
+_load_library()
+
 
 def _setup_ctypes_functions():
     """Defines argtypes and restype for C functions if _lib is loaded."""
+    # _lib is now global and should be set by _load_library()
     if not _lib:
         return
 
