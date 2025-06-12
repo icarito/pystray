@@ -4,6 +4,7 @@
 #include <Deskbar.h>   // For Deskbar interaction
 #include <stdio.h>     // For printf (debugging)
 #include <string.h>    // For strerror
+#include <ctype.h>     // For isprint used in msg_what_to_string_app
 
 // Helper function to convert BMessage::what to a string for logging
 // Using a more robust version similar to DeskbarView.cpp and MainWindow.cpp
