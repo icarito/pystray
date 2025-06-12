@@ -34,8 +34,10 @@ def backend():
         from . import _win32 as backend; return backend
     def xorg():
         from . import _xorg as backend; return backend
+    def haiku():
+        from . import _haiku as backend; return backend
     backends = {b.__name__: b for b in (
-        dummy, appindicator, darwin, gtk, win32, xorg)}
+        dummy, appindicator, darwin, gtk, win32, xorg, haiku)}
 
     backend_name = os.environ.get('PYSTRAY_BACKEND', None)
     if backend_name:
@@ -47,6 +49,8 @@ def backend():
         candidates = [darwin]
     elif sys.platform == 'win32':
         candidates = [win32]
+    elif sys.platform.startswith('haiku'):
+        candidates = [haiku]
     else:
         candidates = [appindicator, gtk, xorg]
 
