@@ -27,6 +27,7 @@ const char* APP_SIGNATURE = "application/x-vnd.pystray-haiku-helper";
 App::App() : BApplication(APP_SIGNATURE) {
     printf("App: Constructor called. Signature: %s\n", APP_SIGNATURE);
     mainWindow = NULL;
+    mReplicantMessenger = BMessenger(); // Initialize to invalid
     printf("App: Constructor finished.\n");
 }
 

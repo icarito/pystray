@@ -14,8 +14,14 @@ public:
     virtual bool QuitRequested();
     virtual void MessageReceived(BMessage* message); // To handle messages
 
+public:
+    // ... other public members ...
+    void SetReplicantMessenger(const BMessenger& messenger) { mReplicantMessenger = messenger; }
+    BMessenger GetReplicantMessenger() const { return mReplicantMessenger; }
+
 private:
     MainWindow* mainWindow;
+    BMessenger mReplicantMessenger; // Messenger to the DeskbarView instance
 };
 
 // C API for Python interaction

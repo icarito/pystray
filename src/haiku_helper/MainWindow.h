@@ -17,8 +17,9 @@ private:
     void _AddReplicantToDeskbar();
     void _RemoveReplicantFromDeskbar(); // For cleanup
 
-    DeskbarView* fDeskbarView; // Optional: if hosting the view directly for testing
+    DeskbarView* fDeskbarView; // Instance of the view to be added to Deskbar
     bool fReplicantAdded;
+    int32 fDeskbarReplicantID; // To store the ID from Deskbar
 };
 
 #endif // MAIN_WINDOW_H
