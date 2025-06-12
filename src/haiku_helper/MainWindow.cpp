@@ -9,213 +9,255 @@
 #include <Path.h>
 #include <Alert.h>
 #include <Notification.h> // Added for BNotification
-#include <stdio.h>       // For printf
+#include <stdio.h>        // For printf
+#include <string.h>       // For strerror, isprint
+
+// Helper function from App.cpp (ideally in a shared utility header)
+// For now, duplicate or ensure it's accessible if this were split differently.
+// Helper to convert message 'what' to a string for logging
+static void msg_what_to_string_mw(uint32 what, char* buffer, size_t buffer_size) {
+    // Try to interpret as 4-char code
+    char c1 = (what >> 24) & 0xFF;
+    char c2 = (what >> 16) & 0xFF;
+    char c3 = (what >> 8) & 0xFF;
+    char c4 = what & 0xFF;
+
+    if (isprint(c1) && isprint(c2) && isprint(c3) && isprint(c4)) {
+        snprintf(buffer, buffer_size, "'%c%c%c%c'", c1, c2, c3, c4);
+    } else {
+        // Fallback to hex if not all chars are printable
+        snprintf(buffer, buffer_size, "0x%08x", (unsigned int)what);
+    }
+}
+
 
 MainWindow::MainWindow()
     : BWindow(BRect(100, 100, 350, 250), "Pystray Helper Window", B_TITLED_WINDOW,
               B_NOT_RESIZABLE | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS),
       fDeskbarView(NULL),
       fReplicantAdded(false) {
-    printf("MainWindow constructor\n");
-    // The window is primarily for hosting the replicant logic initially
-    // and potentially for debugging or complex interactions later.
-    // For a simple Deskbar replicant, this window might be hidden.
+    printf("MainWindow: Constructor called and initialized.\n");
 
     _AddReplicantToDeskbar();
 
-    // If the replicant is successfully added, this window can be hidden.
-    // If it's not added, we might want to show this window with an error or instructions.
     if (fReplicantAdded) {
-        Hide();
+        printf("MainWindow: Constructor - Replicant was successfully added. Hiding main window.\n");
+        if (!IsHidden()) Hide();
     } else {
-        // (new BAlert("Pystray Helper", "Could not add icon to Deskbar.", "OK"))->Go(NULL);
-        // For now, we'll still hide it, as the app's main presence is the Deskbar item.
-    // Hide(); // Window is hidden by default after _AddReplicantToDeskbar or if it fails
-    if (IsHidden()) {
-        printf("MainWindow constructor: Window is hidden.\n");
-    } else {
-        printf("MainWindow constructor: Window is visible. This is unusual for a replicant host.\n");
-        // Ensure it's hidden if replicant was added, otherwise it might be shown for error.
-        if (fReplicantAdded) Hide(); else Show(); // Show if error and no replicant
+        printf("MainWindow: Constructor - Replicant was NOT added. Hiding main window by policy.\n");
+        if (!IsHidden()) Hide();
     }
-    }
-    // If you want to test the DeskbarView directly in this window (not as a replicant):
-    // BRect viewRect = Bounds();
-    // fDeskbarView = new DeskbarView(viewRect);
-    // AddChild(fDeskbarView);
-    // Show();
+    printf("MainWindow: Constructor finished.\n");
 }
 
 MainWindow::~MainWindow() {
-    printf("MainWindow destructor\n");
-    // _RemoveReplicantFromDeskbar(); // Clean up Deskbar if app is quitting this way
-    // Note: BApplication usually handles deleting BWindows in its list.
-    // If fDeskbarView was added as a child, it's deleted by BWindow.
+    printf("MainWindow: Destructor called.\n");
 }
 
 void MainWindow::_AddReplicantToDeskbar() {
+    printf("MainWindow: _AddReplicantToDeskbar - Starting.\n");
     BDeskbar deskbar;
     if (!deskbar.IsRunning()) {
-        printf("Deskbar is not running.\n");
-        // (new BAlert("Error", "Deskbar is not running. Cannot add replicant.", "OK"))->Go(NULL);
+        fprintf(stderr, "MainWindow: _AddReplicantToDeskbar - ERROR: Deskbar is not running.\n");
         return;
     }
 
-    // Check if the replicant is already there by its view name
+    printf("MainWindow: _AddReplicantToDeskbar - Attempting to add replicant by app_ref (view name for check: '%s').\n", DESKBAR_VIEW_NAME);
+
     if (deskbar.HasItem(DESKBAR_VIEW_NAME)) {
-        printf("Replicant '%s' already in Deskbar.\n", DESKBAR_VIEW_NAME);
-        fReplicantAdded = true; // Assume it's ours or functionally equivalent
+        printf("MainWindow: _AddReplicantToDeskbar - Replicant '%s' already in Deskbar.\n", DESKBAR_VIEW_NAME);
+        fReplicantAdded = true;
         return;
     }
 
-    // Get the application's entry_ref to add the replicant
     app_info appInfo;
     status_t status = be_app->GetAppInfo(&appInfo);
     if (status != B_OK) {
-        printf("Error getting app info: %s\n", strerror(status));
-        // (new BAlert("Error", "Could not get application info to add replicant.", "OK"))->Go(NULL);
+        fprintf(stderr, "MainWindow: _AddReplicantToDeskbar - ERROR getting app info: %s\n", strerror(status));
         return;
     }
     entry_ref app_ref = appInfo.ref;
+    // Note: Printing app_ref.name might be misleading if it's just the app executable name.
+    // The replicant is identified by DESKBAR_VIEW_NAME or its archived signature.
+    printf("MainWindow: _AddReplicantToDeskbar - Using app_ref for app signature: %s.\n", appInfo.signature);
 
-    // Add the replicant by signature. Deskbar will look for instantiate_deskbar_item.
-    // The 'name' parameter to AddItem can be NULL if the replicant is self-named (via Archive)
-    // or if we pass the app_ref.
-    status = deskbar.AddItem(&app_ref, NULL); // Pass app_ref, Deskbar finds exported func
-                                          // Or use: deskbar.AddItem(APP_SIGNATURE); if app is registered
-    if (status != B_OK) {
-        printf("Error adding replicant to Deskbar: %s\n", strerror(status));
-        // (new BAlert("Error", "Could not add replicant to Deskbar.", "OK"))->Go(NULL);
-    } else {
-        printf("Replicant '%s' added to Deskbar successfully.\n", DESKBAR_VIEW_NAME);
+    status = deskbar.AddItem(&app_ref, NULL);
+    printf("MainWindow: _AddReplicantToDeskbar - AddItem returned: %s (0x%lx)\n", strerror(status), status);
+
+    if (status == B_OK) {
+        printf("MainWindow: _AddReplicantToDeskbar - Replicant '%s' (using app_ref) added to Deskbar successfully.\n", DESKBAR_VIEW_NAME);
         fReplicantAdded = true;
+    } else {
+        fprintf(stderr, "MainWindow: _AddReplicantToDeskbar - ERROR adding replicant '%s' to Deskbar: %s\n", DESKBAR_VIEW_NAME, strerror(status));
+        fReplicantAdded = false;
     }
 }
 
 void MainWindow::_RemoveReplicantFromDeskbar() {
-    // This is more for explicit removal if the app has a "remove from deskbar" option
-    // or during uninstallation. Typically, users remove replicants themselves.
-    if (!fReplicantAdded) return;
+    printf("MainWindow: _RemoveReplicantFromDeskbar - Starting for item '%s'.\n", DESKBAR_VIEW_NAME);
+    if (!fReplicantAdded && !BDeskbar().HasItem(DESKBAR_VIEW_NAME)) { // Check current Deskbar state too
+        printf("MainWindow: _RemoveReplicantFromDeskbar - Replicant not marked as added (fReplicantAdded=false) AND not found in Deskbar. No action taken.\n");
+        return;
+    }
 
     BDeskbar deskbar;
-    if (deskbar.IsRunning() && deskbar.HasItem(DESKBAR_VIEW_NAME)) {
-        status_t err = deskbar.RemoveItem(DESKBAR_VIEW_NAME);
-        if (err == B_OK) {
-            printf("Replicant '%s' removed from Deskbar.\n", DESKBAR_VIEW_NAME);
+    if (!deskbar.IsRunning()) {
+        fprintf(stderr, "MainWindow: _RemoveReplicantFromDeskbar - ERROR: Deskbar is not running.\n");
+        return;
+    }
+
+    printf("MainWindow: _RemoveReplicantFromDeskbar - Attempting to remove item '%s'.\n", DESKBAR_VIEW_NAME);
+    status_t err = deskbar.RemoveItem(DESKBAR_VIEW_NAME);
+    printf("MainWindow: _RemoveReplicantFromDeskbar - RemoveItem returned: %s (0x%lx)\n", strerror(err), err);
+
+    if (err == B_OK) {
+        printf("MainWindow: _RemoveReplicantFromDeskbar - Replicant '%s' removed successfully.\n", DESKBAR_VIEW_NAME);
+        fReplicantAdded = false;
+    } else {
+        fprintf(stderr, "MainWindow: _RemoveReplicantFromDeskbar - ERROR removing item '%s': %s\n", DESKBAR_VIEW_NAME, strerror(err));
+        if (err == B_ENTRY_NOT_FOUND) { // If Deskbar says it's not there, update our state.
+            printf("MainWindow: _RemoveReplicantFromDeskbar - Item was not found, perhaps already removed by user.\n");
             fReplicantAdded = false;
-        } else {
-            printf("Error removing replicant '%s' from Deskbar: %s\n", DESKBAR_VIEW_NAME, strerror(err));
         }
     }
 }
 
 bool MainWindow::QuitRequested() {
-    printf("MainWindow::QuitRequested()\n");
-    // This window is usually hidden. Quitting is typically initiated
-    // from the DeskbarView's context menu or by a message from pystray.
-    // _RemoveReplicantFromDeskbar(); // Optional: remove replicant when main window quits
+    printf("MainWindow: QuitRequested() called. Posting B_QUIT_REQUESTED to application.\n");
     be_app->PostMessage(B_QUIT_REQUESTED);
-    return true; // BApplication will handle actual quitting
+    return true;
 }
 
 void MainWindow::MessageReceived(BMessage* message) {
+    char whatStr[12]; // Buffer for 'what' code as string
+    msg_what_to_string_mw(message->what, whatStr, sizeof(whatStr));
+    printf("MainWindow: MessageReceived - what: %s\n", whatStr);
+    // message->PrintToStream(); // Uncomment for very detailed BMessage debugging
+
     switch (message->what) {
-        case 'INIT': // Sent from pystray_init via App
-            printf("MainWindow::MessageReceived: INIT\n");
-            // Ensure replicant is added. App::ReadyToRun usually handles initial MainWindow.
-            // This message ensures it happens if pystray_init is called when app is already running.
+        case 'INIT':
+            printf("MainWindow: Message 'INIT' received. Action: Calling _AddReplicantToDeskbar to ensure it's present.\n");
             _AddReplicantToDeskbar();
-            if (fReplicantAdded && IsHidden() == false && Lock()) {
+            if (fReplicantAdded && IsHidden() == false && LockLooper()) {
+                printf("MainWindow: 'INIT' - Replicant present and window is visible, so hiding window.\n");
                 Hide();
-                Unlock();
+                UnlockLooper();
+            } else if (fReplicantAdded && IsHidden()) {
+                 printf("MainWindow: 'INIT' - Replicant present and window already hidden.\n");
+            } else if (!fReplicantAdded) {
+                 printf("MainWindow: 'INIT' - Replicant still not added after explicit call.\n");
             }
             break;
-        case 'SHOW':
-            printf("MainWindow::MessageReceived: SHOW icon\n");
-            // This implies ensuring the replicant is in the Deskbar.
+        case 'SHOW': // Corresponds to MSG_SHOW_DESKBAR_ITEM / pystray_show_icon
+            printf("MainWindow: Message 'SHOW' (Show Deskbar Item) received. Action: Calling _AddReplicantToDeskbar.\n");
             _AddReplicantToDeskbar();
-            // If the view itself can be hidden/shown independently of being in Deskbar:
-            // if (fDeskbarView && fDeskbarView->LockLooper()) {
-            //     if (fDeskbarView->IsHidden()) fDeskbarView->Show();
-            //     fDeskbarView->UnlockLooper();
-            // }
             break;
-        case 'HIDE':
-            printf("MainWindow::MessageReceived: HIDE icon\n");
-            // This implies removing the replicant from the Deskbar.
+        case 'HIDE': // Corresponds to MSG_HIDE_DESKBAR_ITEM / pystray_hide_icon
+            printf("MainWindow: Message 'HIDE' (Hide Deskbar Item) received. Action: Calling _RemoveReplicantFromDeskbar.\n");
             _RemoveReplicantFromDeskbar();
-            // If the view itself can be hidden/shown:
-            // if (fDeskbarView && fDeskbarView->LockLooper()) {
-            //     if (!fDeskbarView->IsHidden()) fDeskbarView->Hide();
-            //     fDeskbarView->UnlockLooper();
-            // }
             break;
-        case 'ICON':
+        case 'ICON': // Corresponds to MSG_UPDATE_ICON / pystray_update_icon
         {
             const char* path = NULL;
-            if (message->FindString("image_path", &path) == B_OK) {
-                printf("MainWindow::MessageReceived: ICON update - Path: %s\n", path);
-                // TODO: Relay this to DeskbarView to load and display the new icon
-                // This might involve creating a BMessage and sending it to fDeskbarView
-                // or calling a method on fDeskbarView if we have a pointer and it's safe.
-                // For now, DeskbarView is not directly managed by MainWindow after attachment.
-                // This requires a more robust way to communicate with the active DeskbarView instance.
-                // One way: DeskbarView could register its BMessenger with App or a global service.
-                BDeskbar db;
-                BMessage updateMsg('VICN'); // View Icon Change
-                updateMsg.AddString("image_path", path);
-                // This is tricky: we need to send this to the *specific instance* of DeskbarView.
-                // Deskbar::SendTo() might be an option if we know the item ID.
-                // Or iterate through views in Deskbar's window.
-                // For now, this is a placeholder for future implementation.
-                 printf("Actual icon update in DeskbarView needs robust communication.\n");
+            if (message->FindString("image_path", &path) == B_OK && path) {
+                printf("MainWindow: Message 'ICON' (Update Icon) received. Path: '%s'. Action: Attempting to forward 'VICN' to DeskbarView(s).\n", path);
+
+                BDeskbar deskbar;
+                if (!deskbar.IsRunning()) {
+                    fprintf(stderr, "MainWindow: 'ICON' handler - Deskbar not running, cannot forward message.\n");
+                    break;
+                }
+                BMessage updateIconMsg('VICN'); // Message type for DeskbarView
+                updateIconMsg.AddString("icon_path", path);
+
+                extern const char* APP_SIGNATURE; // Defined in App.cpp
+                int32 count = deskbar.CountItems(APP_SIGNATURE);
+                printf("MainWindow: 'ICON' handler - Found %d item(s) with signature '%s' to potentially update.\n", (int)count, APP_SIGNATURE);
+                if (count == 0) {
+                     printf("MainWindow: 'ICON' handler - No replicants found with our signature. Cannot send 'VICN'.\n");
+                }
+                for (int32 i = 0; i < count; ++i) {
+                     BMessenger targetMessenger;
+                     if (deskbar.GetMessenger(APP_SIGNATURE, i, &targetMessenger) == B_OK) {
+                         status_t send_err = targetMessenger.SendMessage(&updateIconMsg);
+                         printf("MainWindow: 'ICON' handler - Sent 'VICN' to replicant instance %ld. Path: '%s'. Status: %s\n", i, path, strerror(send_err));
+                     } else {
+                         fprintf(stderr, "MainWindow: 'ICON' handler - ERROR: Failed to get BMessenger for replicant instance %ld.\n", i);
+                     }
+                 }
+            } else {
+                fprintf(stderr, "MainWindow: Message 'ICON' - ERROR: Could not find 'image_path' string or path is NULL.\n");
             }
             break;
         }
-        case 'TITL':
+        case 'TITL': // Corresponds to MSG_UPDATE_TITLE / pystray_update_title
         {
             const char* new_title = NULL;
             if (message->FindString("title", &new_title) == B_OK) {
-                printf("MainWindow::MessageReceived: TITL update - Title: %s\n", new_title);
-                // TODO: Relay this to DeskbarView to update its tooltip (hover text).
-                // Similar to icon update, needs communication with the DeskbarView instance.
-                BMessage updateMsg('VTIL'); // View Title Change
-                updateMsg.AddString("title", new_title);
-                printf("Actual title update in DeskbarView needs robust communication.\n");
+                printf("MainWindow: Message 'TITL' (Update Title) received. Title: '%s'. Action: Attempting to forward 'VTIL' to DeskbarView(s).\n", new_title ? new_title : "NULL_TITLE");
+
+                BDeskbar deskbar;
+                 if (!deskbar.IsRunning()) {
+                    fprintf(stderr, "MainWindow: 'TITL' handler - Deskbar not running, cannot forward message.\n");
+                    break;
+                }
+                BMessage updateTitleMsg('VTIL'); // Message type for DeskbarView
+                updateTitleMsg.AddString("title", new_title ? new_title : "");
+
+                extern const char* APP_SIGNATURE;
+                int32 count = deskbar.CountItems(APP_SIGNATURE);
+                printf("MainWindow: 'TITL' handler - Found %d item(s) with signature '%s' to potentially update title.\n", (int)count, APP_SIGNATURE);
+                 if (count == 0) {
+                     printf("MainWindow: 'TITL' handler - No replicants found with our signature. Cannot send 'VTIL'.\n");
+                }
+                for (int32 i = 0; i < count; ++i) {
+                     BMessenger targetMessenger;
+                     if (deskbar.GetMessenger(APP_SIGNATURE, i, &targetMessenger) == B_OK) {
+                         status_t send_err = targetMessenger.SendMessage(&updateTitleMsg);
+                         printf("MainWindow: 'TITL' handler - Sent 'VTIL' to replicant instance %ld. Title: '%s'. Status: %s\n", i, new_title ? new_title : "", strerror(send_err));
+                     } else {
+                         fprintf(stderr, "MainWindow: 'TITL' handler - ERROR: Failed to get BMessenger for replicant instance %ld.\n", i);
+                     }
+                 }
+            } else {
+                fprintf(stderr, "MainWindow: Message 'TITL' - ERROR: Could not find 'title' string.\n");
             }
             break;
         }
-        case 'NOTI':
+        case 'NOTI': // Corresponds to MSG_SHOW_NOTIFICATION / pystray_notify
         {
             const char* msg_text = NULL;
             const char* notif_title = NULL;
             if (message->FindString("message", &msg_text) == B_OK &&
                 message->FindString("notification_title", &notif_title) == B_OK) {
-                printf("MainWindow::MessageReceived: NOTI - Title: %s, Message: %s\n", notif_title, msg_text);
-                // Use BNotification for Haiku notifications
+                printf("MainWindow: Message 'NOTI' (Show Notification) received. Title: '%s', Message: '%s'. Action: Displaying BNotification.\n",
+                       notif_title ? notif_title : "DefaultTitle", msg_text ? msg_text : "DefaultMessage");
+
                 BNotification notification(B_INFORMATION_NOTIFICATION);
-                notification.SetGroup("Pystray"); // Group notifications from this app
-                notification.SetTitle(notif_title);
-                notification.SetContent(msg_text);
-                // Optionally, set an icon for the notification
-                // app_info info;
-                // be_app->GetAppInfo(&info);
-                // BBitmap appIcon(&info.ref, B_LARGE_ICON);
-                // if (appIcon.InitCheck() == B_OK) {
-                //    notification.SetIcon(&appIcon);
-                // }
-                // Optionally, set a message ID to identify the notification or handle clicks
-                // notification.SetMessageID(...);
-                notification.Send(); // Timeout is optional, default is used.
+                notification.SetGroup("Pystray");
+                notification.SetTitle(notif_title ? notif_title : "Pystray Notification");
+                notification.SetContent(msg_text ? msg_text : "");
+
+                status_t send_status = notification.Send();
+                if (send_status != B_OK) {
+                    fprintf(stderr, "MainWindow: 'NOTI' - ERROR sending BNotification: %s\n", strerror(send_status));
+                } else {
+                    printf("MainWindow: 'NOTI' - BNotification sent successfully.\n");
+                }
+            } else {
+                fprintf(stderr, "MainWindow: Message 'NOTI' - ERROR: Missing 'message' or 'notification_title' strings.\n");
             }
             break;
         }
-        case 'ABUT': // About message from DeskbarView context menu
+        case 'ABUT':
+            printf("MainWindow: Message 'ABUT' received. Action: Showing 'About' alert.\n");
             (new BAlert("About", "Pystray Haiku Helper\n\n"
                                  "Provides Deskbar integration for pystray.", "OK"))->Go(NULL);
             break;
         default:
+            printf("MainWindow: Message unhandled by MainWindow (what: %s), passing to BWindow::MessageReceived.\n", whatStr);
             BWindow::MessageReceived(message);
             break;
     }
+    printf("MainWindow: MessageReceived - Finished processing what: %s.\n", whatStr);
 }

@@ -3,271 +3,310 @@
 #include <Alert.h>     // For notifications or error messages
 #include <Deskbar.h>   // For Deskbar interaction
 #include <stdio.h>     // For printf (debugging)
+#include <string.h>    // For strerror
+
+// Helper function to convert BMessage::what to a string for logging
+// Using a more robust version similar to DeskbarView.cpp and MainWindow.cpp
+static void msg_what_to_string_app(uint32 what, char* buffer, size_t buffer_size) {
+    char c1 = (what >> 24) & 0xFF;
+    char c2 = (what >> 16) & 0xFF;
+    char c3 = (what >> 8) & 0xFF;
+    char c4 = what & 0xFF;
+
+    if (isprint(c1) && isprint(c2) && isprint(c3) && isprint(c4)) {
+        snprintf(buffer, buffer_size, "'%c%c%c%c'", c1, c2, c3, c4);
+    } else {
+        snprintf(buffer, buffer_size, "0x%08x", (unsigned int)what);
+    }
+}
+
 
 const char* APP_SIGNATURE = "application/x-vnd.pystray-haiku-helper";
 
 App::App() : BApplication(APP_SIGNATURE) {
+    printf("App: Constructor called. Signature: %s\n", APP_SIGNATURE);
     mainWindow = NULL;
-    printf("App constructor: signature %s\n", APP_SIGNATURE);
+    printf("App: Constructor finished.\n");
 }
 
 App::~App() {
-    printf("App destructor\n");
-    // The mainWindow is a BWindow, it will be deleted by BApplication's Quit()
-    // if it's still in the window list. If we remove it manually or it's closed,
-    // it should have been deleted there. For this simple case, BApplication handles it.
+    printf("App: Destructor called.\n");
+    // mainWindow (BWindow) is typically deleted by BApplication if in window list
 }
 
 void App::ReadyToRun() {
-    printf("App::ReadyToRun()\n");
-    // Create the main window. It will handle adding the replicant.
-    // The window will be hidden, its purpose is to host the DeskbarView logic
-    // and to be the target for messages.
+    printf("App: ReadyToRun called. Application is now ready to process events.\n");
+    // MainWindow creation is now primarily driven by the 'INIT' message from pystray_init
+    // to ensure it's created in a controlled manner after C API initialization.
+    // A fallback could be added here if desired, but current design relies on C API.
     if (!mainWindow) {
-        mainWindow = new MainWindow();
-        // The MainWindow's constructor should handle showing itself or adding the replicant.
-        // For a Deskbar app, the main window is usually hidden.
-        // mainWindow->Show(); // Only if you need to see it for debugging
+        printf("App: ReadyToRun - mainWindow is NULL. It will be created upon 'INIT' message.\n");
+    } else {
+        printf("App: ReadyToRun - mainWindow already exists (unexpected before 'INIT' from C API).\n");
     }
+    printf("App: ReadyToRun finished.\n");
 }
 
 bool App::QuitRequested() {
-    printf("App::QuitRequested()\n");
-    // Here, you could also remove the replicant from Deskbar if desired
-    // BDeskbar deskbar;
-    // if (deskbar.HasItem("PystrayDeskbarView")) {
-    //     deskbar.RemoveItem("PystrayDeskbarView");
-    // }
+    printf("App: QuitRequested() called. Granting permission to quit.\n");
+    // Any pre-quit cleanup for the app itself can go here.
     return true;
 }
 
 void App::MessageReceived(BMessage* message) {
-    printf("App::MessageReceived() what: %.4s\n", (char*)&message->what);
+    char whatStr[12];
+    msg_what_to_string_app(message->what, whatStr, sizeof(whatStr)); // Use the app-specific helper
+    printf("App: MessageReceived - what: %s\n", whatStr);
+    // message->PrintToStream(); // Uncomment for full BMessage dump
+
     switch (message->what) {
-        // Example: handle a message to show/hide or update the replicant
-        // case 'SHRG':
-    // if (mainWindow) mainWindow->PostMessage(message, mainWindow); // Example
-        //     break;
-    case 'INIT':
-        printf("App::MessageReceived: INIT message from pystray_init\n");
+    case 'INIT': // Sent from pystray_init
+        printf("App: Message 'INIT' received. Action: Creating MainWindow if it doesn't exist.\n");
         if (!mainWindow) {
-            mainWindow = new MainWindow();
-            // MainWindow constructor now handles adding replicant and hiding.
+            printf("App: 'INIT' - MainWindow is NULL, creating new instance.\n");
+            mainWindow = new MainWindow(); // Constructor handles replicant and hiding
+        } else {
+            printf("App: 'INIT' - MainWindow already exists. Forwarding 'INIT' to it for potential re-initialization.\n");
+            mainWindow->PostMessage(message); // Forward to let MainWindow also handle it if needed
         }
         break;
+
+    case B_QUIT_REQUESTED: // Can be sent by pystray_stop
+        printf("App: Message B_QUIT_REQUESTED received. Passing to BApplication base to handle QuitRequested().\n");
+        BApplication::MessageReceived(message); // Standard way to handle this
+        break;
+
+    // Messages from C API wrappers, to be forwarded to MainWindow
     case 'SHOW':
-        printf("App::MessageReceived: SHOW message from pystray_show_icon\n");
-        if (mainWindow) {
-            // This would tell MainWindow to ensure the replicant is added/visible
-            // For now, MainWindow adds it on creation. This could be a re-add or unhide.
-            mainWindow->PostMessage(message, mainWindow);
-        }
+        printf("App: Message 'SHOW' (Show Icon) received from Python. Action: Forwarding to MainWindow.\n");
+        if (mainWindow) mainWindow->PostMessage(message);
+        else fprintf(stderr, "App: 'SHOW' - ERROR: mainWindow is NULL, cannot forward.\n");
         break;
     case 'HIDE':
-        printf("App::MessageReceived: HIDE message from pystray_hide_icon\n");
-        if (mainWindow) {
-            // This would tell MainWindow to remove/hide the replicant
-            mainWindow->PostMessage(message, mainWindow);
-        }
+        printf("App: Message 'HIDE' (Hide Icon) received from Python. Action: Forwarding to MainWindow.\n");
+        if (mainWindow) mainWindow->PostMessage(message);
+        else fprintf(stderr, "App: 'HIDE' - ERROR: mainWindow is NULL, cannot forward.\n");
         break;
     case 'ICON':
     {
-        printf("App::MessageReceived: ICON message from pystray_update_icon\n");
-        const char* path = NULL;
-        if (message->FindString("image_path", &path) == B_OK) {
-            printf("Icon path: %s\n", path);
-            // Pass to MainWindow/DeskbarView
-            if (mainWindow) mainWindow->PostMessage(message, mainWindow);
-        }
+        const char* path_info = "unknown";
+        message->FindString("image_path", &path_info);
+        printf("App: Message 'ICON' (Update Icon) received from Python. Path: '%s'. Action: Forwarding to MainWindow.\n", path_info ? path_info : "NOT_FOUND");
+        if (mainWindow) mainWindow->PostMessage(message);
+        else fprintf(stderr, "App: 'ICON' - ERROR: mainWindow is NULL, cannot forward.\n");
         break;
     }
     case 'TITL':
     {
-        printf("App::MessageReceived: TITL message from pystray_update_title\n");
-        const char* new_title = NULL;
-        if (message->FindString("title", &new_title) == B_OK) {
-            printf("New title: %s\n", new_title);
-            // Pass to MainWindow/DeskbarView
-            if (mainWindow) mainWindow->PostMessage(message, mainWindow);
-        }
+        const char* title_info = "unknown";
+        message->FindString("title", &title_info);
+        printf("App: Message 'TITL' (Update Title) received from Python. Title: '%s'. Action: Forwarding to MainWindow.\n", title_info ? title_info : "NOT_FOUND");
+        if (mainWindow) mainWindow->PostMessage(message);
+        else fprintf(stderr, "App: 'TITL' - ERROR: mainWindow is NULL, cannot forward.\n");
         break;
     }
     case 'NOTI':
     {
-        printf("App::MessageReceived: NOTI message from pystray_notify\n");
-        // Pass to MainWindow to display notification
-        if (mainWindow) mainWindow->PostMessage(message, mainWindow);
+        const char* msg_info = "unknown";
+        const char* title_info = "unknown";
+        message->FindString("message", &msg_info);
+        message->FindString("notification_title", &title_info);
+        printf("App: Message 'NOTI' (Notify) received from Python. Title: '%s', Msg: '%s'. Action: Forwarding to MainWindow.\n",
+                title_info ? title_info : "NOT_FOUND", msg_info ? msg_info : "NOT_FOUND");
+        if (mainWindow) mainWindow->PostMessage(message);
+        else fprintf(stderr, "App: 'NOTI' - ERROR: mainWindow is NULL, cannot forward.\n");
         break;
     }
-        default:
-            BApplication::MessageReceived(message);
-            break;
+    // 'MENU' (pystray_update_menu) is a placeholder, no message handling yet.
+    // 'RMNO' (pystray_remove_notification) is a placeholder, no message handling yet.
+
+    default:
+        printf("App: Message unhandled by App specific logic (what: %s), passing to BApplication::MessageReceived.\n", whatStr);
+        BApplication::MessageReceived(message);
+        break;
     }
+    printf("App: MessageReceived - Finished processing what: %s.\n", whatStr);
 }
 
-int main() {
-    printf("Starting PystrayHaikuHelper (main function)...\n");
-    // In this C API model, main() might not be directly used if Python calls pystray_init() and pystray_run().
-    // However, the BApplication instance is still needed.
-    // Consider making 'app' a global pointer, initialized by pystray_init.
-    // App app;
-    // app.Run();
-    // For now, let main create the app, but Python will drive it.
-    // This means pystray_run() will run be_app->Run().
-    if (be_app == NULL) { // Only create if not already done by pystray_init
-        new App(); // The app instance is stored in be_app global
+int main() { // Kept for potential direct execution/testing
+    printf("App: main() - Starting PystrayHaikuHelper application directly.\n");
+    if (be_app == NULL) {
+        printf("App: main() - No BApplication instance (be_app is NULL), creating new App().\n");
+        new App();
+    } else {
+        printf("App: main() - BApplication instance (be_app) already exists (unexpected for direct run).\n");
     }
-    be_app->Run();
-    printf("PystrayHaikuHelper main loop finished.\n");
-    // delete be_app; // BApplication typically cleans itself up
+
+    if (be_app) {
+        printf("App: main() - Calling be_app->Run(). This will block until quit.\n");
+        be_app->Run();
+        printf("App: main() - be_app->Run() returned. PystrayHaikuHelper main event loop finished.\n");
+    } else {
+        fprintf(stderr, "App: main() - ERROR: be_app is still NULL after new App(). Cannot run.\n");
+        return 1;
+    }
     return 0;
 }
-
-// Global application pointer, managed by C API functions
-// static App* gApp = NULL; // Replaced by be_app and be_app_messenger
 
 // C API Implementations
 extern "C" {
 
 int pystray_init() {
-    printf("C API: pystray_init() called\n");
-    if (be_app) {
-        printf("Application already initialized.\n");
-        // Optionally, send a message to re-initialize or show the window/replicant
-        // BMessage initMsg('INIT');
-        // be_app_messenger.SendMessage(&initMsg);
-        return 0; // Already initialized
+    printf("C API: pystray_init called from Python.\n");
+    if (be_app) { // be_app is the global BApplication pointer
+        printf("C API: pystray_init - Application (be_app) already seems to be initialized.\n");
+        // Ensure MainWindow is created by sending 'INIT' message, even if app was already running.
+        printf("C API: pystray_init - Posting 'INIT' message to potentially existing app instance.\n");
+        status_t post_status = BMessenger(APP_SIGNATURE).SendMessage(new BMessage('INIT'));
+         if (post_status != B_OK) {
+            fprintf(stderr, "C API: pystray_init - WARN: Failed to post 'INIT' message to existing app: %s\n", strerror(post_status));
+        }
+        return 0;
     }
-    // new App(); // Creates the BApplication instance, sets be_app
-    // The MainWindow is created in App::ReadyToRun, which is called by BApplication::Run()
-    // We need to ensure ReadyToRun logic (like creating MainWindow) happens.
-    // One way is to post a message to self after app is created.
-    // Or, call parts of ReadyToRun logic here.
-    // For now, let's assume App constructor or a posted message handles MainWindow creation.
 
-    // Create the BApplication. MainWindow will be created in App::ReadyToRun.
-    // App::ReadyToRun is called when BApplication::Run() is called.
-    // So, pystray_run() will trigger MainWindow creation.
-    new App(); // Sets global be_app
+    printf("C API: pystray_init - Creating new App() instance.\n");
+    new App(); // This sets the global be_app
     if (!be_app) {
-        printf("pystray_init: Failed to create BApplication instance.\n");
-        return -1; // Failure
+        fprintf(stderr, "C API: pystray_init - ERROR: Failed to create BApplication instance (be_app is NULL after new App()).\n");
+        return -1;
     }
 
-    // To ensure MainWindow and replicant are set up before Python might call other functions,
-    // we can send a message that App::MessageReceived or MainWindow can handle.
-    // Or, more directly, call the setup logic if be_app is ready.
-    // For now, MainWindow creation is tied to App::ReadyToRun, triggered by pystray_run().
-    // This means pystray_init() just sets up the app object.
-    // If immediate UI setup is needed, post a message to trigger it.
-    BMessenger(APP_SIGNATURE).SendMessage(new BMessage('INIT'));
+    printf("C API: pystray_init - Posting 'INIT' message to new app instance to trigger MainWindow creation.\n");
+    status_t post_status = BMessenger(APP_SIGNATURE).SendMessage(new BMessage('INIT'));
+    if (post_status != B_OK) {
+         fprintf(stderr, "C API: pystray_init - ERROR: Failed to post 'INIT' message to new app: %s. MainWindow might not be created.\n", strerror(post_status));
+         // This is a potentially problematic state.
+    }
 
-
-    printf("pystray_init: BApplication instance created. Call pystray_run() to start event loop.\n");
-    return 0; // Success
+    printf("C API: pystray_init - BApplication instance created. Python should call pystray_run() to start event loop.\n");
+    return 0;
 }
 
 void pystray_run() {
-    printf("C API: pystray_run() called\n");
+    printf("C API: pystray_run called from Python.\n");
     if (be_app) {
-        be_app->Run(); // Starts the Haiku event loop
+        printf("C API: pystray_run - Calling BApplication::Run(). This is a blocking call.\n");
+        be_app->Run();
+        printf("C API: pystray_run - BApplication::Run() has returned (event loop finished).\n");
     } else {
-        printf("pystray_run: Application not initialized. Call pystray_init() first.\n");
+        fprintf(stderr, "C API: pystray_run - ERROR: Application not initialized (be_app is NULL). Call pystray_init() first.\n");
     }
 }
 
 void pystray_stop() {
-    printf("C API: pystray_stop() called\n");
-    if (be_app_messenger.IsValid()) {
-        // Post a B_QUIT_REQUESTED message to the application.
-        // This will go through the App::QuitRequested() flow.
+    printf("C API: pystray_stop called from Python.\n");
+    if (be_app_messenger.IsValid()) { // be_app_messenger is a global BMessenger to be_app
+        printf("C API: pystray_stop - Posting B_QUIT_REQUESTED to application via be_app_messenger.\n");
         status_t err = be_app_messenger.SendMessage(B_QUIT_REQUESTED);
         if (err != B_OK) {
-            printf("pystray_stop: Error sending B_QUIT_REQUESTED: %s\n", strerror(err));
+            fprintf(stderr, "C API: pystray_stop - ERROR sending B_QUIT_REQUESTED: %s\n", strerror(err));
         }
     } else {
-        printf("pystray_stop: Application not running or not initialized.\n");
+        fprintf(stderr, "C API: pystray_stop - ERROR: Application not running or not initialized (be_app_messenger invalid).\n");
     }
 }
 
 void pystray_show_icon() {
-    printf("C API: pystray_show_icon() called\n");
+    printf("C API: pystray_show_icon called from Python.\n");
     if (be_app_messenger.IsValid()) {
-        // This should message MainWindow to add/show the replicant
         BMessage msg('SHOW');
-        be_app_messenger.SendMessage(&msg);
+        printf("C API: pystray_show_icon - Posting 'SHOW' message to App.\n");
+        status_t err = be_app_messenger.SendMessage(&msg);
+         if (err != B_OK) {
+            fprintf(stderr, "C API: pystray_show_icon - ERROR sending 'SHOW' message: %s\n", strerror(err));
+        }
     } else {
-        printf("pystray_show_icon: App not running.\n");
+        fprintf(stderr, "C API: pystray_show_icon - ERROR: App not running (be_app_messenger invalid).\n");
     }
 }
 
 void pystray_hide_icon() {
-    printf("C API: pystray_hide_icon() called\n");
+    printf("C API: pystray_hide_icon called from Python.\n");
     if (be_app_messenger.IsValid()) {
-        // This should message MainWindow to remove/hide the replicant
         BMessage msg('HIDE');
-        be_app_messenger.SendMessage(&msg);
+        printf("C API: pystray_hide_icon - Posting 'HIDE' message to App.\n");
+        status_t err = be_app_messenger.SendMessage(&msg);
+        if (err != B_OK) {
+            fprintf(stderr, "C API: pystray_hide_icon - ERROR sending 'HIDE' message: %s\n", strerror(err));
+        }
     } else {
-        printf("pystray_hide_icon: App not running.\n");
+        fprintf(stderr, "C API: pystray_hide_icon - ERROR: App not running (be_app_messenger invalid).\n");
     }
 }
 
 void pystray_update_icon(const char* image_path) {
-    printf("C API: pystray_update_icon(%s) called\n", image_path ? image_path : "NULL");
-    if (!image_path) return;
+    printf("C API: pystray_update_icon called from Python with image_path: '%s'\n", image_path ? image_path : "NULL_PATH");
+    if (!image_path) {
+        fprintf(stderr, "C API: pystray_update_icon - ERROR: image_path argument is NULL.\n");
+        return;
+    }
     if (be_app_messenger.IsValid()) {
         BMessage msg('ICON');
         msg.AddString("image_path", image_path);
-        be_app_messenger.SendMessage(&msg);
+        printf("C API: pystray_update_icon - Posting 'ICON' message to App.\n");
+        status_t err = be_app_messenger.SendMessage(&msg);
+        if (err != B_OK) {
+            fprintf(stderr, "C API: pystray_update_icon - ERROR sending 'ICON' message: %s\n", strerror(err));
+        }
     } else {
-        printf("pystray_update_icon: App not running.\n");
+        fprintf(stderr, "C API: pystray_update_icon - ERROR: App not running (be_app_messenger invalid).\n");
     }
 }
 
 void pystray_update_title(const char* title) {
-    printf("C API: pystray_update_title(%s) called\n", title ? title : "NULL");
-    if (!title) return;
+    printf("C API: pystray_update_title called from Python with title: '%s'\n", title ? title : "NULL_TITLE");
+    // Note: BMessage::AddString behavior with NULL might vary or be undesirable.
+    // Python side sends empty string for NULL. If NULL could arrive here, handle explicitly.
     if (be_app_messenger.IsValid()) {
         BMessage msg('TITL');
-        msg.AddString("title", title);
-        be_app_messenger.SendMessage(&msg);
+        msg.AddString("title", title ? title : ""); // Ensure non-NULL if AddString requires it
+        printf("C API: pystray_update_title - Posting 'TITL' message to App.\n");
+        status_t err = be_app_messenger.SendMessage(&msg);
+        if (err != B_OK) {
+            fprintf(stderr, "C API: pystray_update_title - ERROR sending 'TITL' message: %s\n", strerror(err));
+        }
     } else {
-        printf("pystray_update_title: App not running.\n");
+        fprintf(stderr, "C API: pystray_update_title - ERROR: App not running (be_app_messenger invalid).\n");
     }
 }
 
 void pystray_update_menu() {
-    printf("C API: pystray_update_menu() called (Placeholder)\n");
+    printf("C API: pystray_update_menu called from Python (Placeholder).\n");
     if (be_app_messenger.IsValid()) {
-        // Placeholder: Send a message to rebuild the menu
-        // BMessage msg('MENU');
+        // BMessage msg('MENU'); // Example if a message were used
+        // printf("C API: pystray_update_menu - Posting 'MENU' message (placeholder).\n");
         // be_app_messenger.SendMessage(&msg);
+        printf("C API: pystray_update_menu - No message sent as it's a placeholder on C++ side too.\n");
     } else {
-        printf("pystray_update_menu: App not running.\n");
+        fprintf(stderr, "C API: pystray_update_menu - ERROR: App not running (be_app_messenger invalid).\n");
     }
 }
 
 void pystray_notify(const char* message, const char* notification_title) {
-    printf("C API: pystray_notify(message: \"%s\", title: \"%s\") called\n",
-           message ? message : "NULL", notification_title ? notification_title : "NULL");
-    if (!message) message = ""; // Ensure not null
-    if (!notification_title) notification_title = "Notification"; // Default title
+    printf("C API: pystray_notify called from Python. Title: \"%s\", Message: \"%s\"\n",
+           notification_title ? notification_title : "NULL_TITLE", message ? message : "NULL_MSG");
+
+    const char* msg_to_send = message ? message : ""; // Ensure non-NULL for BMessage
+    const char* title_to_send = notification_title ? notification_title : "Notification"; // Default title
 
     if (be_app_messenger.IsValid()) {
         BMessage msg('NOTI');
-        msg.AddString("message", message);
-        msg.AddString("notification_title", notification_title);
-        be_app_messenger.SendMessage(&msg);
+        msg.AddString("message", msg_to_send);
+        msg.AddString("notification_title", title_to_send);
+        printf("C API: pystray_notify - Posting 'NOTI' message to App.\n");
+        status_t err = be_app_messenger.SendMessage(&msg);
+        if (err != B_OK) {
+            fprintf(stderr, "C API: pystray_notify - ERROR sending 'NOTI' message: %s\n", strerror(err));
+        }
     } else {
-        printf("pystray_notify: App not running.\n");
+        fprintf(stderr, "C API: pystray_notify - ERROR: App not running (be_app_messenger invalid).\n");
     }
 }
 
 void pystray_remove_notification() {
-    printf("C API: pystray_remove_notification() called (Placeholder)\n");
-    // Haiku notifications are typically transient.
-    // Specific removal might not be directly possible or needed.
-    // If future Haiku versions support it, a message could be sent.
+    printf("C API: pystray_remove_notification called from Python (Placeholder).\n");
+    // Currently no action. Haiku notifications are typically transient.
+    // If a mechanism to remove them were added, it would be invoked here.
 }
 
 } // extern "C"
