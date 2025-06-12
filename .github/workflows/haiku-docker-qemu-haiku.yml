@@ -1,0 +1,31 @@
+name: Test pystray on Haiku with Python 3.10 (docker-qemu-haiku)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  haiku-python310-pystray:
+    runs-on: ubuntu-latest
+    container: docker.io/hectorm/qemu-haiku:latest
+    steps:
+      - name: Wait until the VM is ready
+        run: container-init & timeout 600 vmshell exit 0
+      - name: Install Python 3.10 y pip
+        run: |
+          vmshell pkgman install -y python3.10
+          vmshell python3 -m ensurepip --upgrade
+          vmshell python3 -m pip install --upgrade pip
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Copy project to VM
+        run: |
+          vmshell mkdir ./src/
+          tar -cf - ./ | vmshell tar -xf - -C ./src/
+      - name: Install pystray desde el repo actual
+        run: vmshell python3 -m pip install --no-cache-dir ./src/
+      - name: Test import pystray
+        run: vmshell python3 -c "import pystray; print(pystray.__version__)"
