@@ -34,7 +34,8 @@ CFLAGS = -Wall -O2 -std=c++11 $(HAIKU_INCLUDES)
 # -lbe: Links against the Be API library (libbe.so)
 # -ltracker: Links against the Tracker library (libtracker.so) if Tracker add-on features are used
 #            (not strictly necessary for a basic Deskbar replicant but often useful)
-LDFLAGS = -lbe -ltracker
+# -ltranslation: For BTranslationUtils (e.g. GetBitmapFile)
+LDFLAGS = -lbe -ltracker -ltranslation
 
 # Name of the resources file, if you have one (e.g., for icons, app version info)
 # RSRC_FILE = $(APP_NAME).rsrc
