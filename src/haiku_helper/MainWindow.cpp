@@ -8,6 +8,7 @@
 #include <Entry.h>
 #include <Path.h>
 #include <Alert.h>
+#include <Notification.h> // Added for BNotification
 #include <stdio.h>       // For printf
 
 MainWindow::MainWindow()
