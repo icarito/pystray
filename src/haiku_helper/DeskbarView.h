@@ -18,7 +18,7 @@ public:
     virtual void DetachedFromWindow();
     virtual void Draw(BRect updateRect);
     virtual void MouseDown(BPoint point);
-    // virtual void MessageReceived(BMessage* message); // If the view needs to handle messages
+    virtual void MessageReceived(BMessage* message);
 
     // Archiving mechanism, required for replicants
     static DeskbarView* Instantiate(BMessage* archive);
